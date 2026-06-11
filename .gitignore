@@ -1,0 +1,6 @@
+#排除临时文件和敏感数据
+*.log
+*.pyc
+__pycache__/
+camp-data/raw/
+.env
