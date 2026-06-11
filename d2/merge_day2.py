@@ -1,28 +1,19 @@
 import json
 import csv
 import os
+import hashlib
 from pathlib import Path
 
-RAW_DIR = Path("camp-data/raw/d2")
+RAW_DIR = Path("raw/d2")
 OUTPUT_FILE = Path("merged.jsonl")
 
-SESSION_ID_KEYS = {"trace_id", "uid", "user_id", "session_id", "id"}
-
-def get_session_id(record):
-    for key in SESSION_ID_KEYS:
-        if key in record:
-            val = record[key]
-            if val != "" and val is not None:
-                return val
-    return None
-
-def generate_record_id(record):
-    """为没有 session ID 的记录生成唯一标识"""
-    import hashlib
+def generate_record_hash(record):
+    """为记录生成内容哈希，用于检测完全相同的记录"""
     content = json.dumps(record, sort_keys=True, ensure_ascii=False)
-    return hashlib.md5(content.encode('utf-8')).hexdigest()[:12]
+    return hashlib.md5(content.encode('utf-8')).hexdigest()
 
 def read_json_file(path):
+    """读取 JSON 文件，支持列表和嵌套结构"""
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, list):
@@ -35,6 +26,7 @@ def read_json_file(path):
     return []
 
 def read_csv_file(path):
+    """读取 CSV 文件"""
     records = []
     with open(path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -43,6 +35,7 @@ def read_csv_file(path):
     return records
 
 def load_all_records(raw_dir):
+    """加载目录下所有数据文件"""
     all_records = []
     if not raw_dir.exists():
         raise FileNotFoundError(f"目录不存在: {raw_dir}")
@@ -69,15 +62,17 @@ def main():
     records = load_all_records(raw_dir)
     print(f"共读取 {len(records)} 条记录")
 
-    seen = set()
+    # 去重策略：只去除完全相同的记录（按内容哈希去重）
+    seen_hashes = set()
     merged = []
+
     for rec in records:
-        sid = get_session_id(rec)
-        if sid is None:
-            sid = generate_record_id(rec)
-        if sid not in seen:
-            seen.add(sid)
-            merged.append(rec)
+        content_hash = generate_record_hash(rec)
+        if content_hash in seen_hashes:
+            print(f"跳过完全重复的记录")
+            continue
+        seen_hashes.add(content_hash)
+        merged.append(rec)
 
     print(f"去重后共 {len(merged)} 条记录")
 
